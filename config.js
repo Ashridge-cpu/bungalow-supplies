@@ -1,14 +1,11 @@
-// Bungalow Supplies — sync configuration.
-// Leave apiKey empty to run in LOCAL MODE (list lives on this phone only).
-// To turn on live sync between both phones, paste the values from
-// Firebase console > Project settings > Your apps > Web app > "SDK setup and configuration" > Config.
-// These values are NOT secret (Firebase web config is public by design); access is controlled by firestore.rules
-// and the household code, which is never stored here.
+// Bungalow Supplies — sync configuration (Firebase project "bungalow-supplies").
+// These web-config values are NOT secret (Firebase designs them to ship inside the app); access is controlled by
+// firestore.rules and the household code, which is never stored here. Empty apiKey = local mode.
 window.BS_FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyA2qGuAYQw15XbuFxR3Lz1W3QGvWR55AwM",
+  authDomain: "bungalow-supplies.firebaseapp.com",
+  projectId: "bungalow-supplies",
+  storageBucket: "bungalow-supplies.firebasestorage.app",
+  messagingSenderId: "424916048875",
+  appId: "1:424916048875:web:0de52cd79b2268b4bf57ae"
 };
