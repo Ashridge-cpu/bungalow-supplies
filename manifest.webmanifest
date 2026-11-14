@@ -1,0 +1,17 @@
+{
+ "id": "/bungalow-supplies/",
+ "name": "Bungalow Supplies",
+ "short_name": "Supplies",
+ "description": "Mark and Emma's shared shopping list",
+ "start_url": "/bungalow-supplies/",
+ "scope": "/bungalow-supplies/",
+ "display": "standalone",
+ "orientation": "portrait",
+ "background_color": "#121212",
+ "theme_color": "#121212",
+ "icons": [
+  {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+  {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+  {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+ ]
+}
