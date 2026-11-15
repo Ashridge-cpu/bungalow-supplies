@@ -91,7 +91,7 @@ function addItem(p,opt={}){
  sync.put('history',key||'x',{name:it.name,qty:active?(h.qty||qty):qty,unit,shop:it.shop,cat:it.cat,count:(h.count||0)+1,last:Date.now()});
  return {it,merged:!!active};
 }
-function addMany(lines,src){let n=0,m=0;lines.forEach(l=>{const r=addItem(parseLine(l));if(r){n++;if(r.merged)m++}});
+function addMany(lines,src,shopOf){let n=0,m=0;lines.forEach(l=>{const p=parseLine(l);if(!p)return;const opt={};if(shopOf){const sh=shopOf(p,l);if(sh)opt.shop=sh}const r=addItem(p,opt);if(r){n++;if(r.merged)m++}});
  if(n)toast((n===1?'Added 1 item':'Added '+n+' items')+(m?' ('+m+' merged)':'')+(src?' from '+src:''));render();return n}
 function setBought(id,b){const it=S.items[id];if(!it)return;sync.put('items',id,Object.assign({},it,{status:b?'bought':'active',boughtAt:b?Date.now():null,addedAt:b?it.addedAt:Date.now()}))}
 function bump(id,d){const it=S.items[id];if(!it)return;const st=STEP[it.unit]||1;let q=+(+it.qty+d*st).toFixed(2);if(q<st)q=st;if(q===it.qty)return;sync.put('items',id,Object.assign({},it,{qty:q}))}
@@ -130,13 +130,19 @@ function renderStaples(){
  $('#p-staples').innerHTML=h;
 }
 const DAYS=[['mon','Monday'],['tue','Tuesday'],['wed','Wednesday'],['thu','Thursday'],['fri','Friday'],['sat','Saturday'],['sun','Sunday']];
+function mealIngList(text){return (text||'').split(/\r?\n|,/).map(s=>s.trim()).filter(Boolean).map(line=>{const p=parseLine(line);return p?{line,p,key:keyOf(p.name)}:null}).filter(Boolean)}
+function defaultIngShop(key,saved){const shop=saved&&saved[key];if(shop&&stores().some(s=>s.id===shop))return shop;const h=S.history[key];if(h&&h.shop&&stores().some(s=>s.id===h.shop))return h.shop;if(filter!=='all'&&stores().some(s=>s.id===filter))return filter;return 'misc'}
+function readIngShops(card){const saved=Object.assign({},(S.meals[card.dataset.day]||{}).ingShops||{});card.querySelectorAll('[data-ingshop]').forEach(sel=>{if(sel.value)saved[sel.dataset.ingshop]=sel.value});const out={};mealIngList(card.querySelector('[data-mf=ingredients]').value).forEach(({key})=>{out[key]=saved[key]||defaultIngShop(key,saved)});return out}
+function ingPickerHTML(list,saved){if(!list.length)return '<div class="ings" data-ings hidden></div>';return '<div class="ings" data-ings>'+list.map(item=>{const shop=defaultIngShop(item.key,saved),s=storeById(shop),q=fmtQty(item.p);return '<div class="ingrow" data-inkey="'+esc(item.key)+'"><span class="idot" style="background:'+s.col+'"></span><span class="inm">'+esc(item.p.name)+(q?' '+esc(q):'')+'</span><select data-ingshop="'+esc(item.key)+'" aria-label="Shop for '+esc(item.p.name)+'">'+opts(stores().map(st=>[st.id,st.name]),shop)+'</select></div>'}).join('')+'</div>'}
+function paintIngShops(card){if(!card)return;let box=card.querySelector('[data-ings]');const ta=card.querySelector('[data-mf=ingredients]');if(!box&&ta){box=document.createElement('div');box.className='ings';box.setAttribute('data-ings','');ta.after(box)}if(!box)return;const list=mealIngList(ta.value);const html=ingPickerHTML(list,Object.assign({},(S.meals[card.dataset.day]||{}).ingShops||{},Object.fromEntries([...card.querySelectorAll('[data-ingshop]')].filter(sel=>sel.value).map(sel=>[sel.dataset.ingshop,sel.value]))));box.outerHTML=html}
 function renderMeals(){
  if($('#p-meals').contains(document.activeElement)&&document.activeElement.tagName!=='BUTTON')return;
  const now=new Date(),dow=(now.getDay()+6)%7,mon=new Date(now);mon.setDate(now.getDate()-dow);
- let h='<h2>This week’s dinners</h2><p class="hint">Plan dinners, list ingredients one per line, then send them to the list. Duplicates merge automatically.</p>';
+ let h='<h2>This week’s dinners</h2><p class="hint">Plan dinners, list ingredients one per line, pick a shop for each, then send them to the list. Duplicates merge automatically.</p>';
  DAYS.forEach(([id,name],i)=>{const m=S.meals[id]||{},d=new Date(mon);d.setDate(mon.getDate()+i);
   h+='<div class="meal'+(i===dow?' today':'')+'" data-day="'+id+'"><div class="dh">'+name+'<small>'+(i===dow?'Today · ':'')+d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+'</small></div>'+
   '<input data-mf="dinner" placeholder="Dinner…" value="'+esc(m.dinner||'')+'"><textarea data-mf="ingredients" placeholder="Ingredients, one per line&#10;e.g. 2 red onions&#10;500g mince">'+esc(m.ingredients||'')+'</textarea>'+
+  ingPickerHTML(mealIngList(m.ingredients||''),m.ingShops||{})+
   '<div class="ma"><span>'+(m.sentAt?'✓ Sent to list '+new Date(m.sentAt).toLocaleDateString('en-GB',{weekday:'short'}):'')+'</span><button class="btn p" data-send>Send to list</button></div></div>'});
  h+='<button class="btn d" data-clearweek style="width:100%">Clear the week</button>';
  $('#p-meals').innerHTML=h;
@@ -267,13 +273,23 @@ $('#p-staples').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==
 let stLp;$('#p-staples').addEventListener('pointerdown',e=>{const t=e.target.closest('[data-staple]');if(!t||e.target.closest('[data-strm]'))return;stLp=setTimeout(()=>{lpFired=true;editItem(t.dataset.staple,'staples')},550)});
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>$('#p-staples').addEventListener(ev,()=>clearTimeout(stLp)));
 $('#p-staples').addEventListener('click',e=>{if(lpFired){lpFired=false;e.stopImmediatePropagation()}},true);
-$('#p-meals').addEventListener('change',e=>{const f=e.target.dataset.mf;if(!f)return;const d=e.target.closest('[data-day]').dataset.day;sync.put('meals',d,Object.assign({},S.meals[d]||{},{[f]:e.target.value}))});
+function saveMealCard(card,extra){const d=card.dataset.day;sync.put('meals',d,Object.assign({},S.meals[d]||{},{dinner:card.querySelector('[data-mf=dinner]').value,ingredients:card.querySelector('[data-mf=ingredients]').value,ingShops:readIngShops(card)},extra||{}))}
+function rememberIngShop(p,shop){const key=keyOf(p.name),h=S.history[key]||{};sync.put('history',key||'x',Object.assign({},h,{name:h.name||p.name,qty:h.qty!=null?h.qty:(p.qty||1),unit:h.unit||p.unit||'',shop,cat:h.cat||categorise(p.name),count:h.count||0,last:Date.now()}))}
+$('#p-meals').addEventListener('input',e=>{if(e.target.dataset.mf==='ingredients')paintIngShops(e.target.closest('[data-day]'))});
+$('#p-meals').addEventListener('change',e=>{
+ const card=e.target.closest('[data-day]');if(!card)return;
+ if(e.target.dataset.ingshop){const key=e.target.dataset.ingshop,shop=e.target.value,s=storeById(shop);
+  saveMealCard(card);const hit=mealIngList(card.querySelector('[data-mf=ingredients]').value).find(x=>x.key===key);if(hit)rememberIngShop(hit.p,shop);
+  card.querySelectorAll('.ingrow').forEach(row=>{if(row.dataset.inkey!==key)return;const dot=row.querySelector('.idot');if(dot)dot.style.background=s.col;const sel=row.querySelector('select');if(sel&&sel.value!==shop)sel.value=shop});return}
+ const f=e.target.dataset.mf;if(!f)return;if(f==='ingredients'){saveMealCard(card);return}sync.put('meals',card.dataset.day,Object.assign({},S.meals[card.dataset.day]||{},{[f]:e.target.value}))});
 $('#p-meals').addEventListener('click',e=>{
  if(e.target.closest('[data-clearweek]')){if(confirm('Clear all seven dinners?')){DAYS.forEach(([d])=>S.meals[d]&&sync.del('meals',d));render()}return}
  const b=e.target.closest('[data-send]');if(!b)return;const card=b.closest('[data-day]'),d=card.dataset.day;
  const dinner=card.querySelector('[data-mf=dinner]').value,ing=card.querySelector('[data-mf=ingredients]').value;
- const lines=ing.split(/\r?\n|,/).map(s=>s.trim()).filter(Boolean);if(!lines.length)return toast('Add some ingredients first');
- document.activeElement.blur();sync.put('meals',d,Object.assign({},S.meals[d]||{},{dinner,ingredients:ing,sentAt:Date.now()}));addMany(lines,dinner||'the meal plan')});
+ const list=mealIngList(ing);if(!list.length)return toast('Add some ingredients first');
+ const shops=readIngShops(card);document.activeElement.blur();
+ saveMealCard(card,{sentAt:Date.now()});
+ addMany(list.map(x=>x.line),dinner||'the meal plan',p=>shops[keyOf(p.name)]||defaultIngShop(keyOf(p.name),shops))});
 $('#p-settings').addEventListener('change',e=>{
  const r=e.target.closest('[data-store]');if(r){const id=r.dataset.store;const name=r.querySelector('[data-sname]').value.trim(),col=r.querySelector('[data-scol]').value;
   if(name)saveCfg({stores:stores().map(s=>s.id===id?Object.assign({},s,{name,col}):s)});return}
@@ -425,5 +441,5 @@ async function start(){
 }
 if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js',{scope:'./'}).catch(()=>{});
 if(room)start();else{render();showSetup('first')}
-window.BS={S,addItem,parseLine,categorise,render,printList,buildPrintSheet,printGroups,saveCfg};
+window.BS={S,addItem,addMany,parseLine,categorise,render,printList,buildPrintSheet,printGroups,saveCfg,mealIngList,defaultIngShop};
 })();
