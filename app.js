@@ -154,6 +154,7 @@ function renderSettings(){
  [{id:'all',name:'All shops',col:'#ff7726'}].concat(stores()).map(s=>'<button class="chip'+(ordShop===s.id?' on':'')+'" data-ordshop="'+esc(s.id)+'" style="background:'+s.col+';color:'+textOn(s.col)+'">'+esc(s.name)+'</button>').join('')+'</div>'+
  '<div class="grp" id="ordlist">'+catOrder(ordShop).map(c=>'<div class="ord" data-cat="'+c+'"><button class="h" data-drag aria-label="Drag">≡</button><span class="sw" style="background:'+CAT[c].col+'"></span><span>'+esc(CAT[c].name)+'</span><button class="ud" data-up>▲</button><button class="ud" data-dn>▼</button></div>').join('')+'</div>'+
  (ordShop!=='all'&&(cfg().catOrder||{})[ordShop]?'<button class="btn" data-ordreset style="margin-top:8px">Reset to “All shops” order</button>':'');
+ h+='<h2>Take to the shops</h2><div class="card"><button class="btn" data-print style="width:100%">Print list</button><p class="hint" style="margin:8px 0 0">Prints one A4 page of shops still to buy, with cut-out boxes you can fold for your pocket.</p></div>';
  h+='<h2>Backup</h2><div class="card" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-export>Save a backup file</button><label class="btn" style="display:flex;align-items:center">Restore from file<input type="file" accept="application/json" data-import hidden></label>'+
  '<button class="btn d" data-clearbought>Clear Recently Bought</button></div>';
  h+='<p class="hint" style="text-align:center;margin:20px 0">Bungalow Supplies v1 · shopping list only — spending lives with Stirling.</p>';
@@ -281,6 +282,7 @@ $('#p-settings').addEventListener('change',e=>{
 });
 $('#p-settings').addEventListener('click',e=>{
  const t=e.target;
+ if(t.closest('[data-print]'))return printList();
  if(t.closest('[data-addstore]'))return storeSheet();
  if(t.closest('[data-srm]'))return removeStore(t.closest('[data-store]').dataset.store);
  if(t.closest('[data-ordshop]')){renderSettings.shop=t.closest('[data-ordshop]').dataset.ordshop;return renderSettings()}
@@ -301,6 +303,64 @@ $('#p-settings').addEventListener('pointermove',e=>{if(!drag)return;const dy=e.c
  if(sib&&Math.abs(dy)>drag.h*.6){dy<0?drag.row.parentNode.insertBefore(drag.row,sib):drag.row.parentNode.insertBefore(sib,drag.row);drag.y+=dy<0?-drag.h:drag.h;drag.row.style.transform='translateY('+(e.clientY-drag.y)+'px)'}});
 const endDrag=()=>{if(!drag)return;drag.row.classList.remove('drag');drag.row.style.transform='';drag=null;saveOrder()};
 $('#p-settings').addEventListener('pointerup',endDrag);$('#p-settings').addEventListener('pointercancel',endDrag);
+
+
+/* ---------- print list (one A4 page, shop boxes to cut out) ---------- */
+function printDate(){return new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}).replace(/,/g,'')}
+function mmPx(mm){const d=document.createElement('div');d.style.cssText='position:absolute;left:-9999px;top:0;width:'+mm+'mm;height:0';document.body.appendChild(d);const px=d.offsetWidth;d.remove();return px}
+function printGroups(){
+ const act=Object.values(S.items).filter(i=>i.status!=='bought');
+ const groups=[];const seen=new Set();
+ stores().forEach(s=>{
+  const items=act.filter(i=>storeById(i.shop).id===s.id).sort((a,b)=>a.name.localeCompare(b.name,'en-GB'));
+  if(items.length){groups.push({store:s,items});items.forEach(i=>seen.add(i.id))}
+ });
+ const left=act.filter(i=>!seen.has(i.id)).sort((a,b)=>a.name.localeCompare(b.name,'en-GB'));
+ if(left.length)groups.push({store:{id:'_other',name:'Other'},items:left});
+ return groups;
+}
+function printItemHTML(it){const q=fmtQty(it);
+ return '<div class="pi"><span class="box" aria-hidden="true">☐</span><span class="pn"><b>'+esc(it.name)+(q?' '+esc(q):'')+'</b>'+(it.note?'<i>'+esc(it.note)+'</i>':'')+'</span></div>'}
+function buildPrintSheet(){
+ const groups=printGroups();
+ let el=$('#print-sheet');if(el)el.remove();
+ el=document.createElement('div');el.id='print-sheet';
+ if(!groups.length){el.innerHTML='<div class="ph"><h1>Bungalow Supplies</h1><span class="dt">'+esc(printDate())+'</span></div><p>Nothing to buy.</p>';document.body.appendChild(el);return el}
+ const n=groups.reduce((a,g)=>a+g.items.length,0);
+ el.innerHTML='<div class="ph"><h1>Bungalow Supplies</h1><span class="dt">'+esc(printDate())+'</span></div><div class="shops">'+
+  groups.map(g=>'<section class="shop"><h2><span class="cut" aria-hidden="true">✂</span>'+esc(g.store.name)+'</h2>'+g.items.map(printItemHTML).join('')+'</section>').join('')+'</div>';
+ document.body.appendChild(el);
+ fitPrintSheet(el,n,groups.length);
+ return el;
+}
+function fitPrintSheet(el,nItems,nShops){
+ const maxH=mmPx(277);
+ el.style.width='190mm';el.style.height='auto';el.style.overflow='visible';
+ el.style.display='block';el.style.position='absolute';el.style.left='-9999px';el.style.top='0';el.style.visibility='hidden';
+ let cols=(nShops>=6||nItems>20)?3:2,pt=11,pad=2.2;
+ const apply=()=>{el.style.setProperty('--print-cols',cols);el.style.fontSize=pt+'pt';el.style.setProperty('--print-pad',pad+'mm')};
+ const overflow=()=>el.scrollHeight>maxH+1;
+ const shrink=()=>{while(overflow()&&pt>7){pt=Math.round((pt-.25)*100)/100;apply()}while(overflow()&&pad>1){pad=Math.round((pad-.2)*10)/10;apply()}};
+ apply();shrink();
+ if(overflow()&&cols===2){cols=3;pt=Math.min(11,pt+1);pad=2.2;apply();shrink()}
+ if(overflow()){while(overflow()&&pt>5.5){pt=Math.round((pt-.2)*100)/100;apply()}}
+ // clear measuring styles so @media print can place the sheet on the page (keep font/cols/pad)
+ el.style.width='';el.style.height='';el.style.overflow='';el.style.display='';el.style.position='';el.style.left='';el.style.top='';el.style.visibility='';
+}
+function printList(opt){
+ opt=opt||{};
+ const groups=printGroups();
+ if(!groups.length&&!opt.preview){toast('Nothing to print — the list is empty or everything is ticked off');return null}
+ const el=buildPrintSheet();
+ if(opt.preview)return el;
+ const done=()=>{window.removeEventListener('afterprint',done);if(el&&el.parentNode)el.remove()};
+ window.addEventListener('afterprint',done);
+ // Two frames so print CSS applies before Android Chrome opens the system print dialog.
+ // Do not remove the sheet on a timer — a short delay can blank the preview. afterprint (or the next Print tap) cleans up.
+ requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
+ return el;
+}
+$('#print-list').addEventListener('click',()=>printList());
 
 /* ---------- badge ---------- */
 function setBadge(s){const b=$('#badge');const L={synced:'Synced',syncing:'Syncing…',offline:'Offline',local:navigator.onLine?'Local':'Offline'};b.textContent=L[s]||s;
@@ -365,5 +425,5 @@ async function start(){
 }
 if('serviceWorker'in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js',{scope:'./'}).catch(()=>{});
 if(room)start();else{render();showSetup('first')}
-window.BS={S,addItem,parseLine,categorise,render};
+window.BS={S,addItem,parseLine,categorise,render,printList,buildPrintSheet,printGroups,saveCfg};
 })();
