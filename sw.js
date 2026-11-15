@@ -1,5 +1,5 @@
 // Offline-first: serve the app shell from cache instantly, refresh it in the background.
-const V='bs-v1-202611151802';
+const V='bs-v1-202611151922';
 const SHELL=['./','./index.html','./app.js','./sync.js','./config.js','./manifest.webmanifest','./banner.webp','./stirling.gif','./logo.webp','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(SHELL)));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x.startsWith('bs-')&&x!==V).map(x=>caches.delete(x)))));self.clients.claim()});
